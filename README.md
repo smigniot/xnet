@@ -34,6 +34,26 @@ as two users, search one from the other, and start chatting.
 | Offline boot | Service worker (`public/sw.js`) precaches the app shell + the Gun library. |
 | Real-time | Gun's native `.on()` subscriptions push updates as fast as the mesh allows. |
 
+### Durability — where messages actually live
+
+This is verified behaviour, not a hopeful claim:
+
+* **Clients are the source of truth.** Every browser persists its own copy of
+  the conversations it has seen (`Gun({ localStorage: true })`). Two participants
+  re-sync directly the next time they are both online — through the relay if it's
+  up, peer-to-peer if it isn't. So PROJECT.md's "the server can be unavailable
+  for some time, sync continues with all participants" holds.
+* **The relay is a discovery point + live forwarder**, persisting the graph to a
+  radisk volume on a best-effort basis. It is intentionally a *dumb mailbox*:
+  losing it never loses messages that participants still hold, and it only ever
+  sees ciphertext.
+* **Known limitation (measured):** this Gun build (`0.2020.x`) does *not*
+  guarantee relay store-and-forward of a message whose recipient is offline at
+  send time — delivery happens when sender and recipient are next online at
+  overlapping moments. If you need guaranteed offline delivery, run a second
+  always-on participant (a "bot" peer) or upgrade the relay to one that pins
+  subscriptions. Live, both-online delivery works out of the box.
+
 ### What an observer can and cannot see
 
 Cannot: message contents, file contents, room names, your contact list contents.

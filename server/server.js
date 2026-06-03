@@ -20,8 +20,11 @@ const require = createRequire(import.meta.url);
 const Gun = require('gun');
 // Pull in the SEA + relay extras so the relay understands signed/encrypted data.
 require('gun/sea.js');
+// Server-side persistence: radisk + the Node filesystem adapter (rfs). NOTE:
+// it must be rfs.js (filesystem), NOT rindexed.js (that is the browser's
+// IndexedDB adapter and silently no-ops on the server).
 require('gun/lib/store.js');
-require('gun/lib/rindexed.js');
+require('gun/lib/rfs.js');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -112,10 +115,21 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Attach the Gun relay to the same HTTP server, served under /gun.
+//
+// Durability model (verified, not assumed): Gun's relay forwards live updates
+// to currently-subscribed peers and best-effort persists the graph to radisk,
+// but it does NOT guarantee store-and-forward of fire-and-forget puts to a peer
+// that is offline at send time. That's by design — in Gun, durability lives in
+// the *clients*: every browser persists its own copy (localStorage) and peers
+// re-sync directly when they next meet. So this relay is a discovery point and
+// live forwarder; losing it never loses messages held by participants.
+//
+// multicast:false silences LAN discovery we don't use.
 const gun = Gun({
   web: server,
   file: DATA_DIR,
   radisk: true,
+  multicast: false,
 });
 
 server.listen(PORT, () => {
