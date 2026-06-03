@@ -1,0 +1,17 @@
+# One-click deploy to Render.com.
+# Push this repo to GitHub, then on Render: New + -> Blueprint -> pick the repo.
+# Render reads this file and stands up the service. No config needed.
+services:
+  - type: web
+    name: xnet
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: GUN_DATA
+        value: /app/data
+    disk:
+      name: xnet-data
+      mountPath: /app/data
+      sizeGB: 1

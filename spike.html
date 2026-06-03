@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xnet feasibility spike</title>
+<style>
+  body{font:14px/1.4 system-ui,sans-serif;margin:0;padding:1rem;background:#111;color:#eee}
+  h1{font-size:1.1rem;margin:.2rem 0}
+  .sub{color:#9aa;margin:.2rem 0 1rem}
+  table{border-collapse:collapse;width:100%;max-width:640px}
+  td,th{border:1px solid #333;padding:.4rem .5rem;text-align:left;vertical-align:top}
+  th{background:#1b1b1b}
+  .ok{color:#5fd35f;font-weight:600}
+  .no{color:#ff6b6b;font-weight:600}
+  .na{color:#caa}
+  .pending{color:#e7c14a}
+  code{color:#9cf}
+  button{margin:1rem 0 .5rem;font-size:1rem;padding:.5rem .9rem;background:#2a6;color:#fff;border:0;border-radius:6px}
+  textarea{width:100%;max-width:640px;height:9rem;background:#000;color:#9f9;border:1px solid #333;border-radius:6px;padding:.5rem;font:12px/1.3 monospace}
+  .note{color:#9aa;max-width:640px;margin-top:1rem}
+</style>
+</head>
+<body>
+<h1>Xnet feasibility spike</h1>
+<div class="sub" id="env"></div>
+<table id="tbl"><thead><tr><th>Capability</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table>
+<button id="copy">Copy results</button>
+<textarea id="out" readonly placeholder="Results appear here for copy/paste…"></textarea>
+<div class="note">
+  Run this same file from each origin you care about and on each device:
+  <b>file://</b> (save &amp; open), a <b>https</b> mirror, and a <b>data:</b> URL — on desktop,
+  iOS&nbsp;Safari and Android&nbsp;Chrome. Paste the copied text back. The two answers that gate
+  the design: does <b>WebRTC</b> work, and does <b>storage</b> persist, on each origin.
+</div>
+
+<script>
+const tbody = document.querySelector('#tbl tbody');
+const lines = [];
+function row(name, state, detail){
+  const cls = state===true?'ok':state===false?'no':state==='pending'?'pending':'na';
+  const label = state===true?'PASS':state===false?'FAIL':state==='pending'?'…':'N/A';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td><td class="${cls}" data-k="${name}">${label}</td><td>${detail||''}</td>`;
+  tbody.appendChild(tr);
+  lines.push(`${label.padEnd(5)} | ${name} | ${detail||''}`);
+  return tr.querySelector('td[data-k]');
+}
+function setCell(cell, state, detail){
+  const cls = state===true?'ok':state===false?'no':'na';
+  cell.className = cls;
+  cell.textContent = state===true?'PASS':state===false?'FAIL':'N/A';
+  const tr = cell.closest('tr');
+  tr.lastElementChild.textContent = detail||'';
+}
+
+// --- Environment ---
+const env = `origin=${location.origin||'(opaque)'} | protocol=${location.protocol} | secureContext=${window.isSecureContext} | UA=${navigator.userAgent}`;
+document.getElementById('env').textContent = env;
+lines.push('# Xnet spike');
+lines.push('# '+env);
+lines.push('');
+
+// --- Synchronous capability probes ---
+function probe(name, fn){
+  try { const d = fn(); row(name, true, d||''); }
+  catch(e){ row(name, false, (e&&e.message)||String(e)); }
+}
+
+probe('localStorage', ()=>{ localStorage.setItem('_x','1'); localStorage.removeItem('_x'); return 'read/write ok'; });
+probe('indexedDB present', ()=>{ if(!window.indexedDB) throw new Error('absent'); return 'object present'; });
+probe('CompressionStream(gzip)', ()=>{ if(!('CompressionStream'in window)) throw new Error('absent'); new CompressionStream('gzip'); return 'constructs'; });
+probe('DecompressionStream(gzip)', ()=>{ if(!('DecompressionStream'in window)) throw new Error('absent'); new DecompressionStream('gzip'); return 'constructs'; });
+probe('crypto.getRandomValues', ()=>{ const a=new Uint8Array(8); crypto.getRandomValues(a); return 'ok (TweetNaCl needs this)'; });
+probe('crypto.subtle (WebCrypto)', ()=>{ if(!(crypto&&crypto.subtle)) throw new Error('absent (expected on data:/insecure)'); return 'present'; });
+probe('RTCPeerConnection present', ()=>{ if(!window.RTCPeerConnection) throw new Error('absent'); return 'constructor present'; });
+probe('file input (QR photo/upload)', ()=>{ const i=document.createElement('input'); i.type='file'; if(i.type!=='file') throw new Error('type coerced'); return 'supported'; });
+
+// --- Async: IndexedDB open ---
+const idbCell = row('IndexedDB open', 'pending', 'opening…');
+(function(){
+  try{
+    const req = indexedDB.open('xnet_spike', 1);
+    req.onsuccess = ()=>{ setCell(idbCell, true, 'open ok'); try{req.result.close()}catch(e){} sync(); };
+    req.onerror = ()=>{ setCell(idbCell, false, (req.error&&req.error.message)||'error'); sync(); };
+    req.onblocked = ()=>{ setCell(idbCell, false, 'blocked'); sync(); };
+  }catch(e){ setCell(idbCell, false, e.message); sync(); }
+})();
+
+// --- Async: StorageManager estimate/persist ---
+const estCell = row('storage.estimate()', 'pending', '…');
+const perCell = row('storage.persist()', 'pending', '…');
+(async function(){
+  try{
+    if(navigator.storage && navigator.storage.estimate){
+      const {usage,quota} = await navigator.storage.estimate();
+      setCell(estCell, true, `quota≈${Math.round((quota||0)/1048576)}MB used≈${Math.round((usage||0)/1048576)}MB`);
+    } else setCell(estCell, 'na', 'API absent');
+  }catch(e){ setCell(estCell, false, e.message); }
+  try{
+    if(navigator.storage && navigator.storage.persist){
+      const granted = await navigator.storage.persist();
+      setCell(perCell, granted?true:false, granted?'granted (durable)':'not granted');
+    } else setCell(perCell, 'na', 'API absent');
+  }catch(e){ setCell(perCell, false, e.message); }
+  sync();
+})();
+
+// --- Async: WebRTC loopback data channel (THE key probe) ---
+const rtcCell = row('WebRTC data channel (loopback)', 'pending', 'negotiating…');
+(async function(){
+  try{
+    const cfg = { iceServers: [] };           // host candidates only; no server needed for loopback
+    const a = new RTCPeerConnection(cfg);
+    const b = new RTCPeerConnection(cfg);
+    a.onicecandidate = e => e.candidate && b.addIceCandidate(e.candidate).catch(()=>{});
+    b.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate).catch(()=>{});
+    let done = false;
+    const finish = (ok, msg)=>{ if(done) return; done=true; setCell(rtcCell, ok, msg); try{a.close();b.close()}catch(e){} sync(); };
+    const to = setTimeout(()=>finish(false,'timeout (no open within 8s)'), 8000);
+    b.ondatachannel = ev => {
+      ev.channel.onmessage = m => { clearTimeout(to); finish(m.data==='ping', 'channel open; msg='+m.data); };
+    };
+    const dc = a.createDataChannel('spike');
+    dc.onopen = ()=>{ try{dc.send('ping')}catch(e){ clearTimeout(to); finish(false,'send failed: '+e.message);} };
+    const offer = await a.createOffer(); await a.setLocalDescription(offer); await b.setRemoteDescription(offer);
+    const ans = await b.createAnswer(); await b.setLocalDescription(ans); await a.setRemoteDescription(ans);
+  }catch(e){ setCell(rtcCell, false, (e&&e.message)||String(e)); sync(); }
+})();
+
+// --- Async (optional): STUN reachability (srflx candidate from Google STUN) ---
+const stunCell = row('STUN reachable (Google)', 'pending', 'gathering…');
+(function(){
+  try{
+    const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    let got=false;
+    const to = setTimeout(()=>{ setCell(stunCell, got?true:false, got?'srflx seen':'no srflx in 6s (NAT/blocked or offline)'); try{pc.close()}catch(e){} sync(); }, 6000);
+    pc.onicecandidate = e=>{ if(e.candidate && /typ srflx/.test(e.candidate.candidate)){ got=true; clearTimeout(to); setCell(stunCell,true,'srflx: public mapping obtained'); try{pc.close()}catch(e){} sync(); } };
+    pc.createDataChannel('s');
+    pc.createOffer().then(o=>pc.setLocalDescription(o));
+  }catch(e){ setCell(stunCell, false, e.message); sync(); }
+})();
+
+// --- copyable text ---
+function sync(){
+  document.getElementById('out').value =
+    lines.map(l=>l).join('\n') + '\n\n' +
+    [...tbody.querySelectorAll('tr')].map(tr=>{
+      const c=tr.children; return `${c[1].textContent.padEnd(5)} | ${c[0].textContent} | ${c[2].textContent}`;
+    }).join('\n');
+}
+setTimeout(sync, 200);
+document.getElementById('copy').onclick = async ()=>{
+  sync();
+  const ta = document.getElementById('out');
+  try{ await navigator.clipboard.writeText(ta.value); document.getElementById('copy').textContent='Copied ✓'; }
+  catch(e){ ta.focus(); ta.select(); document.getElementById('copy').textContent='Select+copy manually'; }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "xnet",
+<<<<<<< HEAD
+  "version": "0.0.1",
+  "private": true,
+  "description": "Serverless P2P chat that ships as one self-contained HTML file (see DESIGN.md).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/phase2.test.cjs && node test/phase3.test.cjs && node test/phase4.test.cjs && node test/phase5.test.cjs"
+  },
+  "devDependencies": {
+    "gun": "^0.2020.1240"
+  }
+=======
+  "version": "0.1.0",
+  "description": "Xnet - an end-to-end encrypted, offline-capable chat over Gun.js (named after Cory Doctorow's Little Brother)",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "gun": "^0.2020.1240"
+  },
+  "license": "MIT"
+>>>>>>> 47573ca (First draft)
+}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xnet</title>
+</head>
+<body style="font:14px/1.5 system-ui,-apple-system,sans-serif;background:#111;color:#eee;margin:0">
+<div id="xnet-boot" style="padding:1.2rem">Loading Xnet…</div>
+<script>
+/* Xnet self-decompressing loader.
+   The full app is embedded below as a gzip+base64 string in the PAYLOAD_B64 variable,
+   decompressed in-browser via DecompressionStream, then written as the document.
+   Build: see build.mjs. Decision refs: DESIGN.md §4 (self-decompress) and §4.5 (self-propagation). */
+(function () {
+  // Capture our own pristine source FIRST, before document.write replaces it, so the running
+  // app can regenerate this exact installer with no server (DESIGN §4.5). window globals survive
+  // document.open()/write()/close(), so the payload can read these afterwards.
+  try { window.__XNET_LOADER_HTML__ = "<!DOCTYPE html>\n" + document.documentElement.outerHTML; } catch (e) {}
+  var PAYLOAD_B64 = "__PAYLOAD_B64__";
+  window.__XNET_SELF__ = PAYLOAD_B64; // gzip+base64 of the payload (for advanced/data-inclusive regeneration)
+
+  function fail(msg) {
+    var b = document.getElementById('xnet-boot');
+    if (b) b.innerHTML = 'Xnet failed to start: ' + msg;
+  }
+  if (!('DecompressionStream' in window)) {
+    return fail('this browser lacks DecompressionStream (needs Chrome≥80, Firefox≥113, Safari≥16.4).');
+  }
+  (async function () {
+    try {
+      var bytes = Uint8Array.from(atob(PAYLOAD_B64), function (c) { return c.charCodeAt(0); });
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      var html = new TextDecoder().decode(await new Response(stream).arrayBuffer());
+      document.open(); document.write(html); document.close();
+    } catch (e) { fail((e && e.message) || String(e)); }
+  })();
+})();
+</script>
+</body>
+</html>

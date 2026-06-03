@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xnet</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { font:15px/1.5 system-ui,-apple-system,sans-serif; background:#0e0f12; color:#e7e9ee; margin:0; }
+  header { display:flex; align-items:center; gap:.6rem; padding:.7rem 1rem; border-bottom:1px solid #23262e; position:sticky; top:0; background:#0e0f12; }
+  #brand { font-size:1.15rem; font-weight:700; letter-spacing:.5px; cursor:pointer; }
+  .badge { font-size:.66rem; padding:.12rem .5rem; border-radius:999px; background:#1c2230; color:#9cc4ff; border:1px solid #2b3550; }
+  #who { color:#8b93a7; font-size:.85rem; margin-left:auto; }
+  #flash { color:#5fd38a; font-size:.85rem; opacity:0; transition:opacity .2s; min-width:3rem; }
+  header button { background:#252a36; color:#dfe3ec; border:1px solid #333a48; border-radius:7px; padding:.3rem .55rem; cursor:pointer; font-size:1rem; }
+  main { max-width:760px; margin:0 auto; padding:1rem; }
+  .view { animation:fade .15s ease; }
+  @keyframes fade { from { opacity:0; } to { opacity:1; } }
+  .rowbar { display:flex; align-items:center; gap:.6rem; margin-bottom:1rem; }
+  .rowbar h2 { font-size:1.1rem; margin:0; }
+  .flex { flex:1; }
+  button { font:inherit; font-size:.92rem; padding:.5rem .9rem; background:#2563c9; color:#fff; border:0; border-radius:7px; cursor:pointer; }
+  button.secondary { background:#252a36; color:#dfe3ec; border:1px solid #333a48; }
+  button.mini { background:transparent; border:1px solid #2b3140; color:#aeb6c6; padding:.25rem .5rem; border-radius:6px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .banner { background:#2a2410; border:1px solid #4a3f17; color:#e7c14a; padding:.6rem .8rem; border-radius:8px; margin-bottom:1rem; font-size:.9rem; }
+  .empty { color:#8b93a7; padding:1.5rem 0; text-align:center; }
+  .list-row { display:flex; align-items:center; gap:.5rem; padding:.7rem .8rem; border:1px solid #1c1f27; border-radius:9px; margin-bottom:.5rem; cursor:pointer; background:#13151b; }
+  .list-row:hover { border-color:#2b3550; }
+  .list-main { flex:1; min-width:0; }
+  .list-title { font-weight:600; }
+  .list-sub { color:#7e8699; font-size:.78rem; }
+  .badge-count { background:#2563c9; color:#fff; border-radius:999px; font-size:.74rem; padding:.1rem .5rem; min-width:1.4rem; text-align:center; }
+  .messages { border:1px solid #1c1f27; border-radius:9px; background:#0b0c10; padding:.6rem; height:min(56vh,440px); overflow-y:auto; margin-bottom:.7rem; }
+  .msg { padding:.35rem .2rem; border-bottom:1px solid #14161d; }
+  .msg.mine .msg-body { color:#cfe0ff; }
+  .msg-meta { color:#7e8699; font-size:.72rem; }
+  .msg-body { white-space:pre-wrap; word-break:break-word; }
+  .composer { display:flex; gap:.5rem; }
+  .msg-input { flex:1; padding:.55rem .7rem; background:#0b0c10; color:#e7e9ee; border:1px solid #2b3140; border-radius:7px; }
+  section { margin-bottom:1.4rem; }
+  section h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.6px; color:#9aa3b5; margin:0 0 .6rem; }
+  .field { margin-bottom:.6rem; }
+  .field-label { color:#8b93a7; font-size:.78rem; margin-bottom:.2rem; }
+  .inline { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+  .inline input { flex:1; min-width:10rem; padding:.45rem .6rem; background:#0b0c10; color:#e7e9ee; border:1px solid #2b3140; border-radius:7px; }
+  .muted { color:#8b93a7; } .small { font-size:.82rem; }
+  code { color:#9cc4ff; background:#161a22; padding:.05rem .3rem; border-radius:4px; }
+  code.wrap { display:inline-block; word-break:break-all; max-width:100%; }
+  table.env { border-collapse:collapse; width:100%; }
+  table.env td { border-bottom:1px solid #161a22; padding:.3rem .4rem; }
+  table.env td:first-child { color:#aeb6c6; width:42%; }
+  .ok { color:#5fd38a; font-weight:600; } .no { color:#ff7a7a; font-weight:600; } .na { color:#8b93a7; }
+  textarea { width:100%; background:#0b0c10; color:#e7e9ee; border:1px solid #2b3140; border-radius:7px; padding:.5rem; font:13px/1.4 monospace; }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-start; justify-content:center; padding:1.2rem; overflow:auto; z-index:50; }
+  .modal { background:#13151b; border:1px solid #2b3140; border-radius:12px; padding:1rem 1.1rem; max-width:420px; width:100%; }
+  img.qr { display:block; width:min(74vw,300px); height:auto; image-rendering:pixelated; background:#fff; padding:8px; border-radius:8px; margin:.5rem auto; }
+  .filebtn { display:inline-block; background:#2563c9; color:#fff; border-radius:7px; padding:.5rem .8rem; cursor:pointer; }
+  .filebtn input { display:none; }
+  .ok-box { background:#11301d; border:1px solid #1f5a34; color:#7fe0a3; padding:.5rem .7rem; border-radius:8px; margin-top:.5rem; }
+  .err { background:#311414; border:1px solid #5a1f1f; color:#ffb0b0; padding:.5rem .7rem; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <span id="brand">Xnet</span>
+  <span class="badge" id="mode">…</span>
+  <span class="badge" id="peers" title="Connected peers">○ offline</span>
+  <span id="who"></span>
+  <span id="flash"></span>
+  <button id="nav-settings" title="Settings">⚙</button>
+</header>
+<main id="view"></main>
+
+<!-- Modules; build.mjs inlines these in order into the single payload. -->
+<script src="vendor/nacl.min.js"></script>
+<script src="vendor/gun.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="store.js"></script>
+<script src="identity.js"></script>
+<script src="codec.js"></script>
+<script src="qr.js"></script>
+<script src="sync.js"></script>
+<script src="signaling.js"></script>
+<script src="signal.js"></script>
+<script src="mesh.js"></script>
+<script src="net.js"></script>
+<script src="model.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
