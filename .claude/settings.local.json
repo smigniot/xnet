@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(grep -v '^node_modules$')",
+      "Bash(pkill -f \"server/server.js\")",
+      "Bash(rm -rf /tmp/xnetdata* data)",
+      "Bash(npx --no-install playwright --version)",
+      "Read(//Users/sebastien/Library/Caches/ms-playwright/**)"
     ]
   }
 }

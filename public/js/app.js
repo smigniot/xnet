@@ -438,6 +438,19 @@ db.on('auth', (s) => { if (s) showApp(); });
 db.on('contacts', refreshLists);
 db.on('rooms', refreshLists);
 
+// History loaded from IndexedDB (offline boot / lazy hydrate): re-render if the
+// affected conversation is open.
+db.on('hydrated', ({ type, id }) => {
+  if (current && current.type === type && current.id === id) renderMessages();
+  refreshLists();
+});
+
+// Pressure eviction dropped old messages locally: refresh the open view + lists.
+db.on('evicted', () => {
+  if (current) renderMessages();
+  refreshLists();
+});
+
 db.on('dm-message', ({ convId, msg }) => {
   if (current?.type === 'dm' && current.id === convId) {
     const wrap = $('#messages');

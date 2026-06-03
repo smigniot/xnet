@@ -14,5 +14,8 @@
   "dependencies": {
     "gun": "^0.2020.1240"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
+  }
 }
