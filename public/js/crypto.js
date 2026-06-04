@@ -76,6 +76,23 @@ export async function openRoom(ciphertext, fromPub, roomKey) {
   }
 }
 
+// --- Signed, public claims (e.g. ack watermarks) ---------------------------
+
+// Sign a small object so anyone (including the relay) can verify I authored it.
+export async function signClaim(obj, myPair) {
+  return SEA.sign(obj, myPair);
+}
+
+// Returns the signed object if the signature matches `pub`, else null.
+export async function verifyClaim(signed, pub) {
+  try {
+    const obj = await SEA.verify(signed, pub);
+    return obj == null ? null : obj;
+  } catch {
+    return null;
+  }
+}
+
 // --- Encrypt-to-self (store a secret only I can read) ----------------------
 
 export async function sealToSelf(data, myPair) {

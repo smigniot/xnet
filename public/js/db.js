@@ -18,11 +18,20 @@
 
 import {
   conversationId, newRoomKey, sealDM, openDM, sealRoom, openRoom,
-  sealToSelf, openFromSelf,
+  sealToSelf, openFromSelf, signClaim,
 } from './crypto.js';
 import * as store from './store.js';
 
 const Gun = window.Gun;
+
+// Deterministic, time-ordered message key: zero-padded ts + random suffix.
+// Lexicographic order ~ chronological order, so the server can range-scan and
+// prune by age (and clients dedupe) without decrypting anything.
+let keySeq = 0;
+function makeMsgKey(ts) {
+  const rnd = Math.floor(Math.random() * 1e6).toString(36) + (keySeq++).toString(36);
+  return `${String(ts).padStart(15, '0')}-${rnd}`;
+}
 
 const peers = [location.origin.replace(/\/$/, '') + '/gun'];
 // Memory-only: Gun syncs over the network but persists nothing locally.
@@ -319,6 +328,7 @@ async function hydrateDM(contact) {
     mem.set(r.id, { id: r.id, from: r.from, ts: r.ts || payload.ts, ...payload });
     added = true;
   }
+  bumpAck(contact.convId, maxTs(mem));
   if (added) emit('hydrated', { type: 'dm', id: contact.convId });
 }
 
@@ -334,15 +344,17 @@ async function ingestDM(contact, node, soul) {
   await store.putMessage({ id: soul, scope, ts: ts || payload.ts, from: node.from, ct: node.c, kind: 'dm' });
   const msg = { id: soul, from: node.from, ts: ts || payload.ts, ...payload };
   mem.set(soul, msg);
+  bumpAck(contact.convId, msg.ts);
   emit('dm-message', { convId: contact.convId, msg });
   scheduleEviction();
 }
 
 export async function sendDM(contact, payload) {
-  payload = { ts: Date.now(), from: session.pub, ...payload };
+  const ts = Date.now();
+  payload = { ts, from: session.pub, ...payload };
   const ciphertext = await sealDM(payload, contact.epub, session.pair);
-  root.get('dm').get(contact.convId).get('messages').set({
-    c: ciphertext, from: session.pub, ts: payload.ts,
+  root.get('dm').get(contact.convId).get('messages').get(makeMsgKey(ts)).put({
+    c: ciphertext, from: session.pub, ts,
   });
 }
 
@@ -433,6 +445,7 @@ async function hydrateRoom(record) {
     mem.set(r.id, { id: r.id, from: r.from, ts: r.ts || payload.ts, ...payload });
     added = true;
   }
+  bumpAck(record.roomId, maxTs(mem));
   if (added) emit('hydrated', { type: 'room', id: record.roomId });
 }
 
@@ -448,15 +461,17 @@ async function ingestRoom(record, node, soul) {
   await store.putMessage({ id: soul, scope, ts: ts || payload.ts, from: node.from, ct: node.c, kind: 'room' });
   const msg = { id: soul, from: node.from, ts: ts || payload.ts, ...payload };
   mem.set(soul, msg);
+  bumpAck(record.roomId, msg.ts);
   emit('room-message', { roomId: record.roomId, msg });
   scheduleEviction();
 }
 
 export async function sendRoom(record, payload) {
-  payload = { ts: Date.now(), from: session.pub, name: session.displayName, ...payload };
+  const ts = Date.now();
+  payload = { ts, from: session.pub, name: session.displayName, ...payload };
   const ciphertext = await sealRoom(payload, record.key, session.pair);
-  root.get('rooms').get(record.roomId).get('messages').set({
-    c: ciphertext, from: session.pub, ts: payload.ts,
+  root.get('rooms').get(record.roomId).get('messages').get(makeMsgKey(ts)).put({
+    c: ciphertext, from: session.pub, ts,
   });
 }
 
@@ -561,4 +576,41 @@ let evictTimer = null;
 function startEvictionTimer() {
   if (evictTimer) return;
   evictTimer = setInterval(scheduleEviction, 120000); // periodic safety sweep
+}
+
+// ---------------------------------------------------------------------------
+// Delivery ack watermarks (Step 2). Each reader publishes a tiny SIGNED record
+// acks/<scope>/<myPub> = { upTo, w } stating "I have durably received this
+// conversation up to timestamp `upTo`". The relay reads these to learn when a
+// message has reached everyone and can be reclaimed early (server janitor).
+//
+// `upTo` only ever increases (monotonic), so re-publishing on boot is safe and
+// never regresses. scope = the SHARED id (convId / roomId).
+// ---------------------------------------------------------------------------
+const ackHigh = new Map();    // scope -> highest ts durably received
+const ackDirty = new Set();
+let ackTimer = null;
+
+function maxTs(memMap) {
+  let m = 0;
+  for (const v of memMap.values()) if (v.ts > m) m = v.ts;
+  return m;
+}
+
+function bumpAck(scope, ts) {
+  if (!ts || ts <= (ackHigh.get(scope) || 0)) return;
+  ackHigh.set(scope, ts);
+  ackDirty.add(scope);
+  if (!ackTimer) ackTimer = setTimeout(flushAcks, 4000);
+}
+
+async function flushAcks() {
+  ackTimer = null;
+  const scopes = [...ackDirty];
+  ackDirty.clear();
+  for (const scope of scopes) {
+    const upTo = ackHigh.get(scope);
+    const w = await signClaim({ scope, upTo, pub: session.pub }, session.pair);
+    root.get('acks').get(scope).get(session.pub).put({ upTo, w });
+  }
 }

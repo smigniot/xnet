@@ -5,7 +5,7 @@
 //   * Same-origin GETs: cache-first, fall back to network, then update cache.
 //   * Never touch /gun traffic — Gun manages its own websocket/HTTP transport.
 
-const CACHE = 'xnet-v3';
+const CACHE = 'xnet-v4';
 const SHELL = [
   '/',
   '/index.html',

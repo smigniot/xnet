@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, extname } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
+import { fork } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const Gun = require('gun');
@@ -132,12 +133,48 @@ const gun = Gun({
   multicast: false,
 });
 
+// Retention + janitor (server-side message archive with safe, local-only
+// pruning). Built and unit-correct, but OFF BY DEFAULT and opt-in via
+// XNET_ARCHIVIST=1 because of a measured Gun limitation in this version:
+//
+//   A Node-side Gun peer does NOT reliably receive messages from the relay over
+//   websocket — node<->relay<->node graph sync doesn't propagate here (only
+//   browsers sync through the relay; node peers only synced via LAN multicast,
+//   which clouds don't have). So the archivist can't capture in production.
+//
+// The flip side: because the relay itself stores nothing and only forwards live
+// traffic, the server already "runs forever" (stateless) and can never remove a
+// message erroneously — durability lives entirely in the clients (their
+// IndexedDB + P2P resync). The janitor is therefore unnecessary today; it stays
+// here, verified, ready for a Gun version where server-side capture works.
+let archivistChild = null;
+function spawnArchivist() {
+  if (process.env.XNET_ARCHIVIST !== '1') return;
+  archivistChild = fork(join(__dirname, 'archivist.js'), [], {
+    env: {
+      ...process.env,
+      XNET_ARCH_PEER: `http://localhost:${PORT}/gun`,
+      XNET_ARCH_DIR: join(DATA_DIR, 'archive'),
+    },
+  });
+  archivistChild.on('exit', (code) => {
+    console.error(`  Archivist exited (${code}); restarting in 3s`);
+    archivistChild = null;
+    setTimeout(spawnArchivist, 3000);
+  });
+}
+
 server.listen(PORT, () => {
   console.log(`\n  Xnet is running`);
   console.log(`  SPA   ->  http://localhost:${PORT}/`);
   console.log(`  Relay ->  http://localhost:${PORT}/gun`);
   console.log(`  Data  ->  ${DATA_DIR}\n`);
+  spawnArchivist();
 });
+
+function shutdown() { if (archivistChild) archivistChild.kill('SIGTERM'); process.exit(0); }
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // Keep a reference so the process doesn't tree-shake the relay away.
 export { gun };
